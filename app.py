@@ -1,70 +1,93 @@
-from flask import Flask, render_template
-from flask_socketio import SocketIO
+import os
+import time
+from flask import Flask, request, jsonify, render_template
+from threading import Thread
 from faker import Faker
 import random
-from time import sleep
-from dotenv import load_dotenv
-from logtail_config import logger
-
-load_dotenv()
+import json
+from logtail import LogtailHandler
+import logging
 
 app = Flask(__name__)
-socketio = SocketIO(app)
 
-generating = False
+running = False
 log_count = 0
+handler = LogtailHandler(source_token=os.getenv('LOGTAIL_SOURCE_TOKEN'))
+
+# Create a logger and configure it to use the LogtailHandler
+logger = logging.getLogger(__name__)
+logger.handlers = []
+logger.setLevel(logging.DEBUG)
+logger.addHandler(handler)
+
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    global running
+    global log_count
+
+    if request.method == 'POST':
+        action = request.form.get('action')
+        if action == 'start':
+            if os.getenv('LOGTAIL_SOURCE_TOKEN') is None:
+                return jsonify(error='Please set the LOGTAIL_SOURCE_TOKEN environment variable.')
+            
+            if running:
+                return jsonify(status='Log generation is already running.')
+
+            running = True
+            Thread(target=generate_logs).start()
+            return jsonify(status='Log generation started.')
+        elif action == 'stop':
+            if not running:
+                return jsonify(status='Log generation is not running.')
+            
+            running = False
+            return jsonify(status=f'Log generation stopped. Total Logs Generated: {log_count}')
+
+    return render_template('index.html', log_count=log_count)
 
 def generate_logs():
-	global generating, log_count
-	fake = Faker()
-	http_methods = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
+    global running
+    global log_count
+    fake = Faker()
+    while running:
+        log = generate_log(fake)
+        
+        # Send the log to Logtail using the logger
+        logger.info(log)
 
-	while generating:
-		method = random.choice(http_methods)
-		url = fake.url()
-		status = random.choice([200, 201, 400, 404, 500])
-		log = {
-			'method': method,
-			'url': url,
-			'status': status,
-			'error': None,
-			'stack': None
-		}
+        log_count += 1
 
-		if status >= 400:
-			log['error'] = fake.words()
-			log['stack'] = fake.words(5)
+        time.sleep(0.1)  # Pause for 100ms
 
-		# Log the message with the appropriate log level
-		if status >= 500:
-			logger.error(log)
-		elif status >= 400:
-			logger.warning(log)
-		else:
-			logger.info(log)
+def generate_log(fake):
+    method = random.choice(["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
+    status = random.choice([200, 201, 204, 301, 302, 400, 401, 403, 404, 405, 500, 501, 502, 503])
+    url = fake.uri_path(deep=3)
+    ip = fake.ipv4()
+    user_agent = fake.user_agent()
+    protocol = random.choice(["HTTP/1.0", "HTTP/1.1", "HTTP/2"])
+    timestamp = time.strftime('%d/%b/%Y:%H:%M:%S %z')
 
-		log_count += 1
-		socketio.emit('log', log_count)  # Emit incremented log count event
+    log_data = {
+        'ip': ip,
+        'timestamp': timestamp,
+        'request': {
+            'method': method,
+            'url': url,
+            'protocol': protocol
+        },
+        'status': status,
+        'user_agent': user_agent,
+        'additional_info': {
+            'user_id': random.randint(1, 100),
+            'referrer': fake.uri(),
+            'response_time': random.uniform(0.1, 10.0)
+        }
+    }
 
-		sleep(0.1)  # Delay between generating logs
+    log_line = json.dumps(log_data)
+    return log_line
 
-@app.route('/')
-def index():
-	return render_template('index.html')
-
-@socketio.on('start')
-def start_logging():
-	global generating
-	if not generating:
-		generating = True
-		socketio.emit('log', log_count)  # Emit initial log count event
-		generate_logs()
-
-@socketio.on('stop')
-def stop_logging():
-	global generating
-	generating = False
-	socketio.emit('log', log_count)  # Emit final log count event
-
-if __name__ == '__main__':
-	socketio.run(app, host='0.0.0.0', port=int(os.getenv("PORT", 5000)))
+if __name__ == "__main__":
+    app.run(debug=True)

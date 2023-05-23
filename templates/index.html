@@ -2,22 +2,102 @@
 <html>
 <head>
     <title>Log Generator</title>
-    <link rel="stylesheet" type="text/css" href="/static/styles.css">
+    <link rel="stylesheet" type="text/css" href="/static/style.css">
 </head>
 <body>
     <div class="container">
         <h1>Log Generator</h1>
         <div class="controls">
-            <button id="start" class="btn">Start Generating Logs</button>
-            <button id="stop" class="btn">Stop Generating Logs</button>
+            <button id="start-btn" class="btn" type="button">Start Generating Logs</button>
+            <button id="stop-btn" class="btn" type="button" disabled>Stop Generating Logs</button>
         </div>
-        <div id="spinner" class="spinner">
-            <div class="loader"></div>
-        </div>
-        <p id="status" class="status">Not Generating Logs...</p>
-        <p id="logCounter" class="log-counter"></p>
+        <div id="loader" class="loader"></div>
+        <p id="status" class="status"></p>
+        <p id="log-count" class="log-count">Logs Generated: <span id="live-count">0</span></p>
     </div>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.4.1/socket.io.min.js"></script>
-    <script src="/static/scripts.js"></script>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            var startButton = $('#start-btn');
+            var stopButton = $('#stop-btn');
+            var loader = $('#loader');
+            var status = $('#status');
+            var liveCount = $('#live-count');
+
+            startButton.click(function() {
+                $.ajax({
+                    type: 'POST',
+                    url: '/',
+                    data: { action: 'start' },
+                    beforeSend: function() {
+                        startButton.prop('disabled', true);
+                        stopButton.prop('disabled', true);
+                        loader.show();
+                        status.text('Log generation starting...');
+                    },
+                    success: function(response) {
+                        status.text(response.status);
+                        startButton.prop('disabled', true);
+                        stopButton.prop('disabled', false);
+                        loader.hide();
+                    },
+                    error: function(xhr, status, error) {
+                        var errorMessage = xhr.responseJSON.error;
+                        status.text(errorMessage);
+                        startButton.prop('disabled', false);
+                        stopButton.prop('disabled', true);
+                        loader.hide();
+                    }
+                });
+            });
+
+            stopButton.click(function() {
+                $.ajax({
+                    type: 'POST',
+                    url: '/',
+                    data: { action: 'stop' },
+                    beforeSend: function() {
+                        startButton.prop('disabled', true);
+                        stopButton.prop('disabled', true);
+                        loader.show();
+                        status.text('Log generation stopping...');
+                    },
+                    success: function(response) {
+                        status.text(response.status);
+                        startButton.prop('disabled', false);
+                        stopButton.prop('disabled', true);
+                        loader.hide();
+                    },
+                    error: function(xhr, status, error) {
+                        var errorMessage = xhr.responseJSON.error;
+                        status.text(errorMessage);
+                        startButton.prop('disabled', false);
+                        stopButton.prop('disabled', true);
+                        loader.hide();
+                    }
+                });
+            });
+
+            // Function to periodically update the live log count
+            function updateLiveCount() {
+                $.ajax({
+                    type: 'GET',
+                    url: '/',
+                    success: function(response) {
+                        var count = response.log_count;
+                        liveCount.text(count);
+                    },
+                    complete: function() {
+                        // Call the function again after a delay
+                        setTimeout(updateLiveCount, 1000); // Update every 1 second
+                    }
+                });
+            }
+
+            // Start updating the live log count
+            updateLiveCount();
+        });
+    </script>
 </body>
 </html>
