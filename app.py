@@ -52,12 +52,20 @@ def generate_logs():
     fake = Faker()
     while running:
         log = generate_log(fake)
-        
-        # Send the log to Logtail using the logger
-        logger.info(log)
+
+        log_level = random.choice(['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'])
+        if log_level == 'DEBUG':
+            logger.debug(log)
+        elif log_level == 'INFO':
+            logger.info(log)
+        elif log_level == 'WARNING':
+            logger.warning(log)
+        elif log_level == 'ERROR':
+            logger.error(log)
+        elif log_level == 'CRITICAL':
+            logger.critical(log)
 
         log_count += 1
-
         time.sleep(0.1)  # Pause for 100ms
 
 def generate_log(fake):
