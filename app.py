@@ -66,7 +66,7 @@ def generate_logs():
             logger.critical(log)
 
         log_count += 1
-        time.sleep(0.1)  # Pause for 100ms
+        time.sleep(0.01)  # Pause for 10ms
 
 def generate_log(fake):
     method = random.choice(["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
